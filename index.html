@@ -15,8 +15,17 @@
   .panel { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
   .panel.active { display: block; }
   .weeklabel { font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; margin-bottom: 16px; }
+  .timerbar { background: #1b2038; border-radius: 10px; padding: 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .timerbar .label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; }
+  .timerbar .display { font-size: 56px; font-weight: 800; color: #ffffff; min-width: 160px; line-height: 1; }
+  .timerbar .display.warn { color: #a08bec; }
+  .timerbar .display.done { color: #6f00ff; font-size: 34px; letter-spacing: 2px; }
+  .timerbar .btns { margin-left: auto; display: flex; gap: 8px; }
+  .timerbar button { padding: 10px 20px; border: 1px solid #6f00ff; background: transparent; color: #ffffff; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px; letter-spacing: 0.5px; border-radius: 20px; }
+  .timerbar button:hover { background: #6f00ff; }
+  .timerbar button.reset { border-color: #2a2f4a; color: #d1d1d1; }
+  .timerbar button.reset:hover { background: #2a2f4a; color: #ffffff; }
   .card { background: #1b2038; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
-  .qtop { display: flex; align-items: center; }
   .qnum { font-size: 11px; font-weight: 600; color: #a08bec; text-transform: uppercase; letter-spacing: 1px; }
   .qtext { font-size: 16px; margin: 8px 0 14px; }
   .answer { font-size: 13px; color: #d1d1d1; margin-bottom: 14px; cursor: pointer; }
@@ -29,12 +38,6 @@
   .winners { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .won { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; }
   .hint { font-size: 11px; color: #8b8fa8; margin-top: 10px; }
-  .timerbtns { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-  .timerbtns button { padding: 5px 12px; border: 1px solid #2a2f4a; background: transparent; color: #d1d1d1; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; border-radius: 14px; }
-  .timerbtns button:hover { border-color: #6f00ff; color: #ffffff; }
-  .timerdisplay { min-width: 52px; text-align: center; font-size: 16px; font-weight: 600; color: #ffffff; }
-  .timerdisplay.warn { color: #a08bec; }
-  .timerdisplay.done { color: #6f00ff; font-size: 12px; letter-spacing: 1px; }
   table { width: 100%; border-collapse: collapse; background: #1b2038; border-radius: 10px; overflow: hidden; }
   th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid #2a2f4a; }
   th { background: #131628; color: #a08bec; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
@@ -70,7 +73,7 @@ const REPO = 'karissasideco/EventTeamtrivia-dashboard';
 
 let DATA = { questions: [], team: [], results: [] };
 let period = 'month';
-const timers = {};
+let bigTimer = null;
 
 function isoWeek(d) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -106,25 +109,33 @@ function issueUrl(week, num, member) {
   return 'https://github.com/' + REPO + '/issues/new?title=' + title + '&body=' + body;
 }
 
-function startTimer(qnum, seconds) {
-  if (timers[qnum]) clearInterval(timers[qnum]);
+function startTimer(seconds) {
+  if (bigTimer) clearInterval(bigTimer);
   let remaining = seconds;
-  const disp = document.getElementById('timer-' + qnum);
+  const disp = document.getElementById('bigtimer');
   const tick = () => {
     const m = Math.floor(remaining / 60);
     const s = remaining % 60;
     disp.textContent = m + ':' + String(s).padStart(2, '0');
-    disp.className = 'timerdisplay' + (remaining <= 10 ? ' warn' : '');
+    disp.className = 'display' + (remaining <= 10 ? ' warn' : '');
     if (remaining <= 0) {
-      clearInterval(timers[qnum]);
-      timers[qnum] = null;
-      disp.textContent = "TIME'S UP";
-      disp.className = 'timerdisplay done';
+      clearInterval(bigTimer);
+      bigTimer = null;
+      disp.textContent = "TIME'S UP!";
+      disp.className = 'display done';
     }
     remaining--;
   };
   tick();
-  timers[qnum] = setInterval(tick, 1000);
+  bigTimer = setInterval(tick, 1000);
+}
+
+function resetTimer() {
+  if (bigTimer) clearInterval(bigTimer);
+  bigTimer = null;
+  const disp = document.getElementById('bigtimer');
+  disp.textContent = '0:00';
+  disp.className = 'display';
 }
 
 function renderWeek() {
@@ -135,7 +146,15 @@ function renderWeek() {
     el.innerHTML = '<p class="muted">No questions for ' + cw + ' yet. Add entries with "week": "' + cw + '" to data/questions.json.</p>';
     return;
   }
-  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || cw) + ' &middot; ' + qs[0].date + '</div>' + qs.map(q => {
+  const timerBar = '<div class="timerbar">' +
+    '<div><div class="label">Timer</div><div class="display" id="bigtimer">0:00</div></div>' +
+    '<div class="btns">' +
+      '<button onclick="startTimer(30)">30 sec</button>' +
+      '<button onclick="startTimer(60)">1 min</button>' +
+      '<button class="reset" onclick="resetTimer()">Reset</button>' +
+    '</div>' +
+  '</div>';
+  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || cw) + ' &middot; ' + qs[0].date + '</div>' + timerBar + qs.map(q => {
     const winners = DATA.results.filter(r => r.week === q.week && Number(r.num) === Number(q.num)).map(r => r.winner);
     const remaining = DATA.team.filter(m => !winners.includes(m));
     const winnerBadges = winners.length
@@ -147,16 +166,9 @@ function renderWeek() {
         '</div><div class="hint">Tap each person who got it right, submit the prefilled issue, then refresh here ~30s later.</div>'
       : '<div class="hint">Everyone got this one! &#127881;</div>';
     return '<div class="card">' +
-      '<div class="qtop">' +
-        '<div class="qnum">Question ' + q.num + '</div>' +
-        '<div class="timerbtns">' +
-          '<button onclick="startTimer(' + q.num + ', 30)">30s</button>' +
-          '<button onclick="startTimer(' + q.num + ', 60)">1:00</button>' +
-          '<span class="timerdisplay" id="timer-' + q.num + '"></span>' +
-        '</div>' +
-      '</div>' +
+      '<div class="qnum">Question ' + q.num + '</div>' +
       '<div class="qtext">' + q.question + '</div>' +
-      '<div class="answer" onclick="this.classList.toggle(\'revealed\')">&#128065; Tap to reveal answer: <span>' + q.answer + '</span></div>' +
+      '<div class="answer" onclick="this.classList.toggle(\'revealed\')">Tap to reveal answer: <span>' + q.answer + '</span></div>' +
       winnerBadges +
       buttons + '</div>';
   }).join('');
