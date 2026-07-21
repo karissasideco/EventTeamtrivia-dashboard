@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acquisition.com Events Team Trivia</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;600;800&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Poppins', Arial, sans-serif; font-weight: 300; margin: 0; background: #131628; color: #ffffff; }
+  header { background: #131628; color: white; padding: 18px 24px; font-size: 15px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid #2a2f4a; }
+  header .sub { color: #a08bec; font-weight: 600; font-size: 12px; margin-left: 10px; letter-spacing: 1px; }
+  .tabs { display: flex; background: #131628; border-bottom: 1px solid #2a2f4a; padding: 0 12px; }
+  .tab { padding: 12px 20px; cursor: pointer; font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #d1d1d1; border-bottom: 3px solid transparent; }
+  .tab.active { color: #ffffff; border-bottom-color: #6f00ff; }
+  .panel { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
+  .panel.active { display: block; }
+  .weeklabel { font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; margin-bottom: 16px; }
+  .card { background: #1b2038; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+  .qtop { display: flex; align-items: center; }
+  .qnum { font-size: 11px; font-weight: 600; color: #a08bec; text-transform: uppercase; letter-spacing: 1px; }
+  .qtext { font-size: 16px; margin: 8px 0 14px; }
+  .answer { font-size: 13px; color: #d1d1d1; margin-bottom: 14px; cursor: pointer; }
+  .answer span { display: none; font-weight: 600; color: #a08bec; }
+  .answer.revealed span { display: inline; }
+  .members { display: flex; flex-wrap: wrap; gap: 8px; }
+  .members a { padding: 8px 16px; border: 1px solid #6f00ff; background: transparent; border-radius: 20px;
+               font-size: 13px; text-decoration: none; color: #ffffff; }
+  .members a:hover { background: #6f00ff; }
+  .winners { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .won { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; }
+  .hint { font-size: 11px; color: #8b8fa8; margin-top: 10px; }
+  .timerbtns { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .timerbtns button { padding: 5px 12px; border: 1px solid #2a2f4a; background: transparent; color: #d1d1d1; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; border-radius: 14px; }
+  .timerbtns button:hover { border-color: #6f00ff; color: #ffffff; }
+  .timerdisplay { min-width: 52px; text-align: center; font-size: 16px; font-weight: 600; color: #ffffff; }
+  .timerdisplay.warn { color: #a08bec; }
+  .timerdisplay.done { color: #6f00ff; font-size: 12px; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; background: #1b2038; border-radius: 10px; overflow: hidden; }
+  th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid #2a2f4a; }
+  th { background: #131628; color: #a08bec; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+  tr:first-child td { font-weight: 600; color: #a08bec; }
+  .medal { font-size: 16px; }
+  .toggle { margin-bottom: 16px; }
+  .toggle button { padding: 8px 18px; border: none; background: #1b2038; color: #d1d1d1; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .toggle button:first-child { border-radius: 6px 0 0 6px; }
+  .toggle button:last-child { border-radius: 0 6px 6px 0; }
+  .toggle button.on { background: #6f00ff; color: #ffffff; }
+  .muted { color: #8b8fa8; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>ACQUISITION.COM<span class="sub">EVENTS TEAM TRIVIA</span></header>
+<div class="tabs">
+  <div class="tab active" onclick="showPanel('week', this)">This Week</div>
+  <div class="tab" onclick="showPanel('standings', this)">Standings</div>
+</div>
+
+<div id="week" class="panel active"><p class="muted">Loading&hellip;</p></div>
+
+<div id="standings" class="panel">
+  <div class="toggle">
+    <button id="btnMonth" class="on" onclick="setPeriod('month')">This Month</button>
+    <button id="btnQuarter" onclick="setPeriod('quarter')">This Quarter</button>
+  </div>
+  <div id="standingsTable"></div>
+</div>
+
+<script>
+const REPO = 'karissasideco/EventTeamtrivia-dashboard';
+
+let DATA = { questions: [], team: [], results: [] };
+let period = 'month';
+const timers = {};
+
+function isoWeek(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return date.getUTCFullYear() + '-W' + String(week).padStart(2, '0');
+}
+
+function showPanel(id, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+}
+
+async function load() {
+  const bust = '?t=' + Date.now();
+  const [q, t, r] = await Promise.all([
+    fetch('data/questions.json' + bust).then(x => x.json()),
+    fetch('data/team.json' + bust).then(x => x.json()),
+    fetch('data/results.json' + bust).then(x => x.json())
+  ]);
+  DATA = { questions: q, team: t, results: r };
+  renderWeek();
+  renderStandings();
+}
+
+function issueUrl(week, num, member) {
+  const title = encodeURIComponent('record|' + week + '|' + num + '|' + member);
+  const body = encodeURIComponent('Recording a point for **' + member + '** on ' + week + ' Q' + num + '. Just click "Submit new issue" - a bot handles the rest.');
+  return 'https://github.com/' + REPO + '/issues/new?title=' + title + '&body=' + body;
+}
+
+function startTimer(qnum, seconds) {
+  if (timers[qnum]) clearInterval(timers[qnum]);
+  let remaining = seconds;
+  const disp = document.getElementById('timer-' + qnum);
+  const tick = () => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    disp.textContent = m + ':' + String(s).padStart(2, '0');
+    disp.className = 'timerdisplay' + (remaining <= 10 ? ' warn' : '');
+    if (remaining <= 0) {
+      clearInterval(timers[qnum]);
+      timers[qnum] = null;
+      disp.textContent = "TIME'S UP";
+      disp.className = 'timerdisplay done';
+    }
+    remaining--;
+  };
+  tick();
+  timers[qnum] = setInterval(tick, 1000);
+}
+
+function renderWeek() {
+  const el = document.getElementById('week');
+  const cw = isoWeek(new Date());
+  const qs = DATA.questions.filter(q => q.week === cw);
+  if (!qs.length) {
+    el.innerHTML = '<p class="muted">No questions for ' + cw + ' yet. Add entries with "week": "' + cw + '" to data/questions.json.</p>';
+    return;
+  }
+  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || cw) + ' &middot; ' + qs[0].date + '</div>' + qs.map(q => {
+    const winners = DATA.results.filter(r => r.week === q.week && Number(r.num) === Number(q.num)).map(r => r.winner);
+    const remaining = DATA.team.filter(m => !winners.includes(m));
+    const winnerBadges = winners.length
+      ? '<div class="winners">' + winners.map(w => '<span class="won">&#9989; ' + w + '</span>').join('') + '</div>'
+      : '';
+    const buttons = remaining.length
+      ? '<div class="members">' +
+          remaining.map(m => '<a href="' + issueUrl(q.week, q.num, m) + '" target="_blank">' + m + '</a>').join('') +
+        '</div><div class="hint">Tap each person who got it right, submit the prefilled issue, then refresh here ~30s later.</div>'
+      : '<div class="hint">Everyone got this one! &#127881;</div>';
+    return '<div class="card">' +
+      '<div class="qtop">' +
+        '<div class="qnum">Question ' + q.num + '</div>' +
+        '<div class="timerbtns">' +
+          '<button onclick="startTimer(' + q.num + ', 30)">30s</button>' +
+          '<button onclick="startTimer(' + q.num + ', 60)">1:00</button>' +
+          '<span class="timerdisplay" id="timer-' + q.num + '"></span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="qtext">' + q.question + '</div>' +
+      '<div class="answer" onclick="this.classList.toggle(\'revealed\')">&#128065; Tap to reveal answer: <span>' + q.answer + '</span></div>' +
+      winnerBadges +
+      buttons + '</div>';
+  }).join('');
+}
+
+function setPeriod(p) {
+  period = p;
+  document.getElementById('btnMonth').classList.toggle('on', p === 'month');
+  document.getElementById('btnQuarter').classList.toggle('on', p === 'quarter');
+  renderStandings();
+}
+
+function renderStandings() {
+  const now = new Date();
+  const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+  const start = period === 'month'
+    ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : new Date(now.getFullYear(), qStartMonth, 1);
+
+  const totals = {};
+  DATA.team.forEach(m => totals[m] = 0);
+  DATA.results.forEach(r => {
+    if (new Date(r.ts) >= start) totals[r.winner] = (totals[r.winner] || 0) + (r.points || 1);
+  });
+
+  const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  const medals = ['&#129351;', '&#129352;', '&#129353;'];
+  document.getElementById('standingsTable').innerHTML =
+    '<table><tr><th></th><th>Team Member</th><th>Points</th></tr>' +
+    rows.map(([m, p], i) =>
+      '<tr><td class="medal">' + (medals[i] || (i + 1)) + '</td><td>' + m + '</td><td>' + p + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+load();
+</script>
+</body>
+</html>
