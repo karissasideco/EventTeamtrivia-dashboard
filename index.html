@@ -70,6 +70,7 @@
 
 <script>
 const REPO = 'karissasideco/EventTeamtrivia-dashboard';
+const SHEET_CSV = 'https://docs.google.com/spreadsheets/d/15Ojdvg5oPfE87x84fEAlYnrFZd5ixg1yf3rt1dwQryM/gviz/tq?tqx=out:csv';
 
 let DATA = { questions: [], team: [], results: [] };
 let period = 'month';
@@ -84,6 +85,27 @@ function isoWeek(d) {
   return date.getUTCFullYear() + '-W' + String(week).padStart(2, '0');
 }
 
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r') cur += c;
+    }
+  }
+  if (cur.length || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
 function showPanel(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -93,14 +115,34 @@ function showPanel(id, el) {
 
 async function load() {
   const bust = '?t=' + Date.now();
-  const [q, t, r] = await Promise.all([
-    fetch('data/questions.json' + bust).then(x => x.json()),
-    fetch('data/team.json' + bust).then(x => x.json()),
-    fetch('data/results.json' + bust).then(x => x.json())
-  ]);
-  DATA = { questions: q, team: t, results: r };
-  renderWeek();
-  renderStandings();
+  try {
+    const [sheetText, t, r] = await Promise.all([
+      fetch(SHEET_CSV + '&cachebust=' + Date.now()).then(x => x.text()),
+      fetch('data/team.json' + bust).then(x => x.json()),
+      fetch('data/results.json' + bust).then(x => x.json())
+    ]);
+    const rows = parseCSV(sheetText);
+    const questions = rows.slice(1)
+      .filter(r2 => r2.length >= 5 && r2[3] && r2[3].trim())
+      .map(r2 => {
+        const dateStr = (r2[1] || '').trim();
+        const parsed = new Date(dateStr);
+        return {
+          week: isNaN(parsed) ? '' : isoWeek(parsed),
+          label: (r2[0] || '').trim(),
+          date: dateStr,
+          num: Number((r2[2] || '').trim()),
+          question: (r2[3] || '').trim(),
+          answer: (r2[4] || '').trim()
+        };
+      });
+    DATA = { questions: questions, team: t, results: r };
+    renderWeek();
+    renderStandings();
+  } catch (e) {
+    document.getElementById('week').innerHTML =
+      '<p class="muted">Could not load data. Check that the Google Sheet is shared as "Anyone with the link - Viewer" and that data/team.json and data/results.json exist. (' + e.message + ')</p>';
+  }
 }
 
 function issueUrl(week, num, member) {
@@ -143,7 +185,7 @@ function renderWeek() {
   const cw = isoWeek(new Date());
   const qs = DATA.questions.filter(q => q.week === cw);
   if (!qs.length) {
-    el.innerHTML = '<p class="muted">No questions for ' + cw + ' yet. Add entries with "week": "' + cw + '" to data/questions.json.</p>';
+    el.innerHTML = '<p class="muted">No questions for this week yet. Add rows to the Google Sheet with a Date that falls in the current week.</p>';
     return;
   }
   const timerBar = '<div class="timerbar">' +
@@ -154,7 +196,7 @@ function renderWeek() {
       '<button class="reset" onclick="resetTimer()">Reset</button>' +
     '</div>' +
   '</div>';
-  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || cw) + ' &middot; ' + qs[0].date + '</div>' + timerBar + qs.map(q => {
+  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || 'This week') + ' &middot; ' + qs[0].date + '</div>' + timerBar + qs.map(q => {
     const winners = DATA.results.filter(r => r.week === q.week && Number(r.num) === Number(q.num)).map(r => r.winner);
     const remaining = DATA.team.filter(m => !winners.includes(m));
     const winnerBadges = winners.length
