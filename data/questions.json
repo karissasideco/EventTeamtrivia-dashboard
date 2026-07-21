@@ -1,0 +1,5 @@
+[
+  { "week": "2026-W30", "label": "Week 1", "date": "Jul 20, 2026", "num": 1, "question": "\u201cIs Alex, Leila, or Sharran here? Can I speak with one of them?\u201d \u2014 what's the correct response?", "answer": "They travel quite a bit, so I'm not sure whether they're on-site right now. Is there anything I can help you with in the meantime?" },
+  { "week": "2026-W30", "label": "Week 1", "date": "Jul 20, 2026", "num": 2, "question": "How many materials are in Ice Breakers, and what are those items?", "answer": "(5) Marshmallows, Pasta, Tape, Parchment Paper, String" },
+  { "week": "2026-W30", "label": "Week 1", "date": "Jul 20, 2026", "num": 3, "question": "In AP, who are our three Product Owners for L1, L2, and L3?", "answer": "L1: Ed, L2: Chase, L3: JJ" }
+]
