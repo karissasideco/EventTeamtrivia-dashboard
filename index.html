@@ -32,9 +32,10 @@
   .answer span { display: none; font-weight: 600; color: #a08bec; }
   .answer.revealed span { display: inline; }
   .members { display: flex; flex-wrap: wrap; gap: 8px; }
-  .members a { padding: 8px 16px; border: 1px solid #6f00ff; background: transparent; border-radius: 20px;
-               font-size: 13px; text-decoration: none; color: #ffffff; }
-  .members a:hover { background: #6f00ff; }
+  .members button { padding: 8px 16px; border: 1px solid #6f00ff; background: transparent; border-radius: 20px;
+               font-size: 13px; color: #ffffff; cursor: pointer; font-family: inherit; font-weight: 300; }
+  .members button:hover { background: #6f00ff; }
+  .members button:disabled { opacity: 0.5; cursor: wait; }
   .winners { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .won { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; }
   .hint { font-size: 11px; color: #8b8fa8; margin-top: 10px; }
@@ -69,8 +70,8 @@
 </div>
 
 <script>
-const REPO = 'karissasideco/EventTeamtrivia-dashboard';
 const SHEET_CSV = 'https://docs.google.com/spreadsheets/d/15Ojdvg5oPfE87x84fEAlYnrFZd5ixg1yf3rt1dwQryM/gviz/tq?tqx=out:csv';
+const SCRIPT_URL = 'https://script.google.com/a/macros/acquisition.com/s/AKfycbxTC0MavqdWbX13JGpaJIp--RtE5_LFUcEyFCQ9k0YklGPmoCHEtId8Axpeccz_ctw/exec';
 
 let DATA = { questions: [], team: [], results: [] };
 let period = 'month';
@@ -114,12 +115,10 @@ function showPanel(id, el) {
 }
 
 async function load() {
-  const bust = '?t=' + Date.now();
   try {
-    const [sheetText, t, r] = await Promise.all([
+    const [sheetText, live] = await Promise.all([
       fetch(SHEET_CSV + '&cachebust=' + Date.now()).then(x => x.text()),
-      fetch('data/team.json' + bust).then(x => x.json()),
-      fetch('data/results.json' + bust).then(x => x.json())
+      fetch(SCRIPT_URL + '?t=' + Date.now()).then(x => x.json())
     ]);
     const rows = parseCSV(sheetText);
     const questions = rows.slice(1)
@@ -136,19 +135,39 @@ async function load() {
           answer: (r2[4] || '').trim()
         };
       });
-    DATA = { questions: questions, team: t, results: r };
+    DATA = { questions: questions, team: live.team, results: live.results };
     renderWeek();
     renderStandings();
   } catch (e) {
     document.getElementById('week').innerHTML =
-      '<p class="muted">Could not load data. Check that the Google Sheet is shared as "Anyone with the link - Viewer" and that data/team.json and data/results.json exist. (' + e.message + ')</p>';
+      '<p class="muted">Could not load data. Check the sheet sharing, the Results and Team tabs, and the Apps Script deployment (Who has access: Anyone). (' + e.message + ')</p>';
   }
 }
 
-function issueUrl(week, num, member) {
-  const title = encodeURIComponent('record|' + week + '|' + num + '|' + member);
-  const body = encodeURIComponent('Recording a point for **' + member + '** on ' + week + ' Q' + num + '. Just click "Submit new issue" - a bot handles the rest.');
-  return 'https://github.com/' + REPO + '/issues/new?title=' + title + '&body=' + body;
+async function refreshLive() {
+  try {
+    const live = await fetch(SCRIPT_URL + '?t=' + Date.now()).then(x => x.json());
+    DATA.team = live.team;
+    DATA.results = live.results;
+    renderWeek();
+    renderStandings();
+  } catch (e) {}
+}
+
+async function record(week, num, member, btn) {
+  if (btn) btn.disabled = true;
+  DATA.results.push({ ts: new Date().toISOString(), week: week, num: num, winner: member, points: 1 });
+  renderWeek();
+  renderStandings();
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ week: week, num: num, winner: member })
+    });
+  } catch (e) {
+    alert('Could not save the point. Check the Apps Script deployment ("Who has access" should be Anyone), then refresh.');
+  }
+  setTimeout(refreshLive, 1500);
 }
 
 function startTimer(seconds) {
@@ -204,8 +223,8 @@ function renderWeek() {
       : '';
     const buttons = remaining.length
       ? '<div class="members">' +
-          remaining.map(m => '<a href="' + issueUrl(q.week, q.num, m) + '" target="_blank">' + m + '</a>').join('') +
-        '</div><div class="hint">Tap each person who got it right, submit the prefilled issue, then refresh here ~30s later.</div>'
+          remaining.map(m => '<button onclick="record(\'' + q.week + '\',' + q.num + ',\'' + m.replace(/'/g, "\\'") + '\', this)">' + m + '</button>').join('') +
+        '</div><div class="hint">Tap each person who got it right. Points save instantly.</div>'
       : '<div class="hint">Everyone got this one! &#127881;</div>';
     return '<div class="card">' +
       '<div class="qnum">Question ' + q.num + '</div>' +
