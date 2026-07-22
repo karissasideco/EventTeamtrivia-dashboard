@@ -185,7 +185,6 @@ async function record(week, num, member, btn) {
 }
 
 async function unrecord(week, num, member) {
-  if (!confirm('Remove the point for ' + member + ' on Question ' + num + '?')) return;
   DATA.results = DATA.results.filter(r => !(r.week === week && Number(r.num) === Number(num) && r.winner === member));
   renderAll();
   try {
