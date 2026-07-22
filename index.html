@@ -38,7 +38,10 @@
   .members button:hover { background: #6f00ff; }
   .members button:disabled { opacity: 0.5; cursor: wait; }
   .winners { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-  .won { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; }
+  .won { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; border: none; cursor: pointer; font-family: inherit; }
+  .won:hover { background: #8b74d8; }
+  .won .x { margin-left: 6px; font-weight: 800; opacity: 0.6; }
+  .wonstatic { display: inline-block; background: #a08bec; color: #131628; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; padding: 6px 14px; border-radius: 20px; }
   .hint { font-size: 11px; color: #8b8fa8; margin-top: 10px; }
   table { width: 100%; border-collapse: collapse; background: #1b2038; border-radius: 10px; overflow: hidden; }
   th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid #2a2f4a; }
@@ -181,6 +184,21 @@ async function record(week, num, member, btn) {
   setTimeout(refreshLive, 1500);
 }
 
+async function unrecord(week, num, member) {
+  if (!confirm('Remove the point for ' + member + ' on Question ' + num + '?')) return;
+  DATA.results = DATA.results.filter(r => !(r.week === week && Number(r.num) === Number(num) && r.winner === member));
+  renderAll();
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'remove', week: week, num: num, winner: member })
+    });
+  } catch (e) {
+    alert('Could not remove the point. Check the connection and refresh.');
+  }
+  setTimeout(refreshLive, 1500);
+}
+
 function startTimer(seconds) {
   if (bigTimer) clearInterval(bigTimer);
   let remaining = seconds;
@@ -216,17 +234,23 @@ function winnersFor(q) {
 
 function questionCard(q, withScoring) {
   const winners = winnersFor(q);
-  const winnerBadges = winners.length
-    ? '<div class="winners">' + winners.map(w => '<span class="won">&#9989; ' + w + '</span>').join('') + '</div>'
-    : '';
+  let winnerBadges = '';
+  if (winners.length) {
+    winnerBadges = '<div class="winners">' + winners.map(w => {
+      if (withScoring) {
+        return '<button class="won" title="Tap to remove this point" onclick="unrecord(\'' + q.week + '\',' + q.num + ',\'' + w.replace(/'/g, "\\'") + '\')">&#9989; ' + w + '<span class="x">&times;</span></button>';
+      }
+      return '<span class="wonstatic">&#9989; ' + w + '</span>';
+    }).join('') + '</div>';
+  }
   let footer = '';
   if (withScoring) {
     const remaining = DATA.team.filter(m => !winners.includes(m));
     footer = remaining.length
       ? '<div class="members">' +
           remaining.map(m => '<button onclick="record(\'' + q.week + '\',' + q.num + ',\'' + m.replace(/'/g, "\\'") + '\', this)">' + m + '</button>').join('') +
-        '</div><div class="hint">Tap each person who got it right. Points save instantly.</div>'
-      : '<div class="hint">Everyone got this one! &#127881;</div>';
+        '</div><div class="hint">Tap a name to give a point. Tap a purple badge to remove one.</div>'
+      : '<div class="hint">Everyone got this one! &#127881; (Tap a badge to remove a point.)</div>';
   }
   return '<div class="card">' +
     '<div class="qnum">Question ' + q.num + '</div>' +
