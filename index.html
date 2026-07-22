@@ -9,12 +9,13 @@
   body { font-family: 'Poppins', Arial, sans-serif; font-weight: 300; margin: 0; background: #131628; color: #ffffff; }
   header { background: #131628; color: white; padding: 18px 24px; font-size: 15px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid #2a2f4a; }
   header .sub { color: #a08bec; font-weight: 600; font-size: 12px; margin-left: 10px; letter-spacing: 1px; }
-  .tabs { display: flex; background: #131628; border-bottom: 1px solid #2a2f4a; padding: 0 12px; }
-  .tab { padding: 12px 20px; cursor: pointer; font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #d1d1d1; border-bottom: 3px solid transparent; }
+  .tabs { display: flex; background: #131628; border-bottom: 1px solid #2a2f4a; padding: 0 12px; overflow-x: auto; }
+  .tab { padding: 12px 20px; cursor: pointer; font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #d1d1d1; border-bottom: 3px solid transparent; white-space: nowrap; }
   .tab.active { color: #ffffff; border-bottom-color: #6f00ff; }
   .panel { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
   .panel.active { display: block; }
-  .weeklabel { font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; margin-bottom: 16px; }
+  .weeklabel { font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; margin: 24px 0 16px; }
+  .weeklabel:first-child { margin-top: 0; }
   .timerbar { background: #1b2038; border-radius: 10px; padding: 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
   .timerbar .label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #a08bec; }
   .timerbar .display { font-size: 56px; font-weight: 800; color: #ffffff; min-width: 160px; line-height: 1; }
@@ -56,10 +57,16 @@
 <header>ACQUISITION.COM<span class="sub">EVENTS TEAM TRIVIA</span></header>
 <div class="tabs">
   <div class="tab active" onclick="showPanel('week', this)">This Week</div>
+  <div class="tab" onclick="showPanel('upcoming', this)">Upcoming</div>
+  <div class="tab" onclick="showPanel('archive', this)">Archive</div>
   <div class="tab" onclick="showPanel('standings', this)">Standings</div>
 </div>
 
 <div id="week" class="panel active"><p class="muted">Loading&hellip;</p></div>
+
+<div id="upcoming" class="panel"><p class="muted">Loading&hellip;</p></div>
+
+<div id="archive" class="panel"><p class="muted">Loading&hellip;</p></div>
 
 <div id="standings" class="panel">
   <div class="toggle">
@@ -136,12 +143,18 @@ async function load() {
         };
       });
     DATA = { questions: questions, team: live.team, results: live.results };
-    renderWeek();
-    renderStandings();
+    renderAll();
   } catch (e) {
     document.getElementById('week').innerHTML =
       '<p class="muted">Could not load data. Check the sheet sharing, the Results and Team tabs, and the Apps Script deployment (Who has access: Anyone). (' + e.message + ')</p>';
   }
+}
+
+function renderAll() {
+  renderWeek();
+  renderUpcoming();
+  renderArchive();
+  renderStandings();
 }
 
 async function refreshLive() {
@@ -149,16 +162,14 @@ async function refreshLive() {
     const live = await fetch(SCRIPT_URL + '?t=' + Date.now()).then(x => x.json());
     DATA.team = live.team;
     DATA.results = live.results;
-    renderWeek();
-    renderStandings();
+    renderAll();
   } catch (e) {}
 }
 
 async function record(week, num, member, btn) {
   if (btn) btn.disabled = true;
   DATA.results.push({ ts: new Date().toISOString(), week: week, num: num, winner: member, points: 1 });
-  renderWeek();
-  renderStandings();
+  renderAll();
   try {
     await fetch(SCRIPT_URL, {
       method: 'POST',
@@ -199,10 +210,41 @@ function resetTimer() {
   disp.className = 'display';
 }
 
+function winnersFor(q) {
+  return DATA.results.filter(r => r.week === q.week && Number(r.num) === Number(q.num)).map(r => r.winner);
+}
+
+function questionCard(q, withScoring) {
+  const winners = winnersFor(q);
+  const winnerBadges = winners.length
+    ? '<div class="winners">' + winners.map(w => '<span class="won">&#9989; ' + w + '</span>').join('') + '</div>'
+    : '';
+  let footer = '';
+  if (withScoring) {
+    const remaining = DATA.team.filter(m => !winners.includes(m));
+    footer = remaining.length
+      ? '<div class="members">' +
+          remaining.map(m => '<button onclick="record(\'' + q.week + '\',' + q.num + ',\'' + m.replace(/'/g, "\\'") + '\', this)">' + m + '</button>').join('') +
+        '</div><div class="hint">Tap each person who got it right. Points save instantly.</div>'
+      : '<div class="hint">Everyone got this one! &#127881;</div>';
+  }
+  return '<div class="card">' +
+    '<div class="qnum">Question ' + q.num + '</div>' +
+    '<div class="qtext">' + q.question + '</div>' +
+    '<div class="answer" onclick="this.classList.toggle(\'revealed\')">Tap to reveal answer: <span>' + q.answer + '</span></div>' +
+    winnerBadges + footer + '</div>';
+}
+
+function groupByWeek(list) {
+  const map = {};
+  list.forEach(q => { (map[q.week] = map[q.week] || []).push(q); });
+  return Object.keys(map).sort().map(w => map[w].sort((a, b) => a.num - b.num));
+}
+
 function renderWeek() {
   const el = document.getElementById('week');
   const cw = isoWeek(new Date());
-  const qs = DATA.questions.filter(q => q.week === cw);
+  const qs = DATA.questions.filter(q => q.week === cw).sort((a, b) => a.num - b.num);
   if (!qs.length) {
     el.innerHTML = '<p class="muted">No questions for this week yet. Add rows to the Google Sheet with a Date that falls in the current week.</p>';
     return;
@@ -215,24 +257,36 @@ function renderWeek() {
       '<button class="reset" onclick="resetTimer()">Reset</button>' +
     '</div>' +
   '</div>';
-  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || 'This week') + ' &middot; ' + qs[0].date + '</div>' + timerBar + qs.map(q => {
-    const winners = DATA.results.filter(r => r.week === q.week && Number(r.num) === Number(q.num)).map(r => r.winner);
-    const remaining = DATA.team.filter(m => !winners.includes(m));
-    const winnerBadges = winners.length
-      ? '<div class="winners">' + winners.map(w => '<span class="won">&#9989; ' + w + '</span>').join('') + '</div>'
-      : '';
-    const buttons = remaining.length
-      ? '<div class="members">' +
-          remaining.map(m => '<button onclick="record(\'' + q.week + '\',' + q.num + ',\'' + m.replace(/'/g, "\\'") + '\', this)">' + m + '</button>').join('') +
-        '</div><div class="hint">Tap each person who got it right. Points save instantly.</div>'
-      : '<div class="hint">Everyone got this one! &#127881;</div>';
-    return '<div class="card">' +
-      '<div class="qnum">Question ' + q.num + '</div>' +
-      '<div class="qtext">' + q.question + '</div>' +
-      '<div class="answer" onclick="this.classList.toggle(\'revealed\')">Tap to reveal answer: <span>' + q.answer + '</span></div>' +
-      winnerBadges +
-      buttons + '</div>';
-  }).join('');
+  el.innerHTML = '<div class="weeklabel">' + (qs[0].label || 'This week') + ' &middot; ' + qs[0].date + '</div>' +
+    timerBar + qs.map(q => questionCard(q, true)).join('');
+}
+
+function renderUpcoming() {
+  const el = document.getElementById('upcoming');
+  const cw = isoWeek(new Date());
+  const groups = groupByWeek(DATA.questions.filter(q => q.week && q.week > cw));
+  if (!groups.length) {
+    el.innerHTML = '<p class="muted">No upcoming rounds yet. Add rows to the Google Sheet with a future date and they will appear here.</p>';
+    return;
+  }
+  el.innerHTML = groups.map(g =>
+    '<div class="weeklabel">' + (g[0].label || g[0].week) + ' &middot; ' + g[0].date + '</div>' +
+    g.map(q => questionCard(q, false)).join('')
+  ).join('');
+}
+
+function renderArchive() {
+  const el = document.getElementById('archive');
+  const cw = isoWeek(new Date());
+  const groups = groupByWeek(DATA.questions.filter(q => q.week && q.week < cw)).reverse();
+  if (!groups.length) {
+    el.innerHTML = '<p class="muted">No past rounds yet. Finished rounds will appear here automatically.</p>';
+    return;
+  }
+  el.innerHTML = groups.map(g =>
+    '<div class="weeklabel">' + (g[0].label || g[0].week) + ' &middot; ' + g[0].date + '</div>' +
+    g.map(q => questionCard(q, false)).join('')
+  ).join('');
 }
 
 function setPeriod(p) {
